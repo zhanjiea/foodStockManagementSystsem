@@ -40,13 +40,21 @@ section .data
     newline db 10   
 
     ; Menu
-    menu db 'FOOD STOCK MANAGEMENT SYSTEM', 0xA
-         db '1) Display list of items', 0xA
-         db '2) Create new item', 0xA
-         db '3) Add item stock', 0xA
-         db '4) Reduce item stock', 0xA,
-         db '5) Delete item', 0xA, 
-         db '6) Quit', 0xA,0xA
+    menu db '-----------------------------------------------', 0xA
+         db '|         FOOD STOCK MANAGEMENT SYSTEM        |', 0xA
+         db '|---------------------------------------------|', 0xA
+         db '| 1) | Display list of items                  |', 0xA
+         db '|----|----------------------------------------|', 0xA
+         db '| 2) | Create new item                        |', 0xA
+         db '|----|----------------------------------------|', 0xA
+         db '| 3) | Add item stock                         |', 0xA
+         db '|----|----------------------------------------|', 0xA
+         db '| 4) | Reduce item stock                      |', 0xA
+         db '|----|----------------------------------------|', 0xA
+         db '| 5) | Delete item                            |', 0xA 
+         db '|----|----------------------------------------|', 0xA
+         db '| 6) | Quit                                   |', 0xA
+         db '-----------------------------------------------', 0xA,0xA
          db 'Enter Choice : '
     len_menu equ $ - menu
 
@@ -55,6 +63,22 @@ section .data
     len_choice1 equ $ - choice1
     errorMsg db 'Error: cannot open file.', 0xA
     len_errorMsg equ $ - errorMsg
+
+    tableTop db '-----------------------------------------------', 0xA
+    len_tableTop equ $ - tableTop
+    tableHeader db '|  Item Name                      |   Value   |', 0xA
+    len_tableHeader equ $ - tableHeader
+    tableDivider db '|---------------------------------|-----------|', 0xA
+    len_tableDivider equ $ - tableDivider
+    tableBottom db '-----------------------------------------------', 0xA
+    len_tableBottom equ $ - tableBottom
+    pipeStart db '|  '
+    len_pipeStart equ $ - pipeStart
+    pipeMiddle db '|'
+    len_pipeMiddle equ $ - pipeMiddle
+    pipeEnd db '|', 0xA
+    len_pipeEnd equ $ - pipeEnd
+    spaces db '                                        '  ; 40 spaces for padding
 
     choice2 db  'CREATE NEW ITEM', 0xA
             db  'Enter item name and value (apple, 10): ',
@@ -93,6 +117,11 @@ section .bss
 menuInput resb 1
 newmItem resb 64
 readFileBuffer resb 128
+itemNameBuf resb 64
+itemValueBuf resb 16
+lineBuffer resb 128
+itemNameLen resd 1
+itemValueLen resd 1
 addStockItem resb 64
 addStockValue resb 10
 fileBuffer resb 2048        ; buffer to hold entire file
@@ -321,46 +350,222 @@ exit:
 
 ;-------------------------------------------------------------------------------------------
 displayItems:
-    push ebp        ; Save old base pointer
-    mov ebp, esp    ; Create new stack frame
-
-    ; ===== Open file for reading =====
+    push ebp
+    mov ebp, esp
+    push ebx
+    push esi
+    push edi
+    
+    ; Print table top
+    print tableTop, len_tableTop
+    print tableHeader, len_tableHeader
+    print tableDivider, len_tableDivider
+    
+    ; Open file
     openfile filename, 0, 0
     cmp eax, 0
-    js .file_error          ; if < 0, jump (file not found or error)
-    mov esi, eax            ; save file descriptor
-
-    ; ===== Read file (read 128 bytes each loop until 0) =====
-.read_loop:
-    mov eax, 3              ; sys_read
-    mov ebx, esi            ; file descriptor
-    mov ecx, readFileBuffer   ; where to store data
-    mov edx, 128            ; how many bytes to read
+    js .file_error
+    mov ebx, eax                ; file descriptor
+    
+    ; Read entire file
+    mov eax, 3
+    mov ecx, fileBuffer
+    mov edx, 2048
     int 0x80
-
-    ; if 0 or negative, end of file or error
-    cmp eax, 0
-    jle .done_reading       
-
-    mov edi, eax            ; save number of bytes read
-
-    ; print to screen
-    mov eax, 4              ; sys_write
-    mov ebx, 1              ; stdout
-    mov ecx, readFileBuffer ; buffer
-    mov edx, edi            ; bytes read (saved value)
+    
+    mov [fileBytesRead], eax
+    
+    mov eax, 6                  ; close file
     int 0x80
-
-    jmp .read_loop
-
+    
+    cmp dword [fileBytesRead], 0
+    jle .no_items
+    
+    ; Parse and display each line
+    xor esi, esi                ; position in fileBuffer
+    
+.line_loop:
+    cmp esi, [fileBytesRead]
+    jge .done_display
+    
+    ; Parse one line (item name and value)
+    call .parse_line
+    
+    ; Display formatted line
+    call .display_formatted_line
+    
+    ; Print divider
+    print tableDivider, len_tableDivider
+    
+    jmp .line_loop
+    
+.done_display:
+    print tableBottom, len_tableBottom
+    jmp .cleanup
+    
 .file_error:
     print errorMsg, len_errorMsg
+    jmp .cleanup
+    
+.no_items:
+    print tableBottom, len_tableBottom
+    jmp .cleanup
 
-.done_reading:
-    ; ===== Close file =====
-    closefile esi
+; ========================================
+; Parse one line from file
+; Input: esi = position in fileBuffer
+; Output: itemNameBuf, itemValueBuf filled
+;         esi = position after this line
+; ========================================
+.parse_line:
+    push ebp
+    push ebx
+    push edi
+    
+    ; Clear buffers
+    mov edi, itemNameBuf
+    mov ecx, 64
+    xor al, al
+    rep stosb
+    
+    mov edi, itemValueBuf
+    mov ecx, 16
+    xor al, al
+    rep stosb
+    
+    ; Parse item name (until comma)
+    xor edi, edi                ; index in itemNameBuf
+.parse_name:
+    mov al, [fileBuffer + esi]
+    cmp al, ','
+    je .found_comma
+    cmp al, 0xA
+    je .end_line
+    cmp al, 0
+    je .end_line
+    
+    mov [itemNameBuf + edi], al
+    inc edi
+    inc esi
+    jmp .parse_name
+    
+.found_comma:
+    mov [itemNameLen], edi
+    inc esi                     ; skip comma
+    
+    ; Skip optional space after comma
+    mov al, [fileBuffer + esi]
+    cmp al, ' '
+    jne .parse_value
+    inc esi
+    
+.parse_value:
+    ; Parse value (until newline)
+    xor edi, edi                ; index in itemValueBuf
+.parse_val_loop:
+    mov al, [fileBuffer + esi]
+    cmp al, 0xA
+    je .end_line
+    cmp al, 0
+    je .end_line
+    
+    mov [itemValueBuf + edi], al
+    inc edi
+    inc esi
+    jmp .parse_val_loop
+    
+.end_line:
+    mov [itemValueLen], edi
+    inc esi                     ; skip newline
+    
+    pop edi
+    pop ebx
+    pop ebp
+    ret
 
-    mov esp, ebp
+; ========================================
+; Display one formatted line
+; Format: |  Item Name (padded to 32)      |   Value (padded)   |
+; ========================================
+.display_formatted_line:
+    push ebp
+    push ebx
+    push esi
+    push edi
+    
+    ; Print "|  "
+    print pipeStart, len_pipeStart
+    
+    ; Print item name
+    mov eax, 4
+    mov ebx, 1
+    mov ecx, itemNameBuf
+    mov edx, [itemNameLen]
+    int 0x80
+    
+    ; Calculate padding needed (32 - itemNameLen)
+    mov eax, 32
+    sub eax, [itemNameLen]
+    sub eax, 1               ; -1 for the spaace after name/before pipe
+    
+    ; Print spaces for padding
+    mov ebx, 1
+    mov ecx, spaces
+    mov edx, eax
+    mov eax, 4
+    int 0x80
+    
+    ; Print " |   "
+    mov eax, 4
+    mov ebx, 1
+    lea ecx, [pipeMiddle]
+    mov edx, 1
+    int 0x80
+    
+    ; Print 3 spaces before value
+    mov eax, 4
+    mov ebx, 1
+    mov ecx, spaces
+    mov edx, 3
+    int 0x80
+    
+    ; Print value
+    mov eax, 4
+    mov ebx, 1
+    mov ecx, itemValueBuf
+    mov edx, [itemValueLen]
+    int 0x80
+    
+    ; Calculate padding after value (5 - itemValueLen)
+    mov eax, 5
+    sub eax, [itemValueLen]
+    
+    ; Print spaces after value
+    mov ebx, 1
+    mov ecx, spaces
+    mov edx, eax
+    mov eax, 4
+    int 0x80
+    
+    ; Print "   |" and newline
+    mov eax, 4
+    mov ebx, 1
+    lea ecx, [spaces]
+    mov edx, 3                  ; 3 more spaces
+    int 0x80
+    
+    print pipeEnd, len_pipeEnd
+    
+    pop edi
+    pop esi
+    pop ebx
+    pop ebp
+    ret
+
+.cleanup:
+    pop edi
+    pop esi
+    pop ebx
     pop ebp
     ret
 
