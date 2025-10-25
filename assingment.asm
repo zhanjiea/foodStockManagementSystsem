@@ -97,9 +97,37 @@ section .data
     len_choice4 equ $ - choice4
     reduceStockValueInput db  'Enter stock to reduce: ',
     len_reduceStockValue equ $ - reduceStockValueInput
+    insufficientStockAlert db '--------------------------------------------------', 0xA
+                           db '|                 WARNING MESSAGE                |', 0xA
+                           db '|------------------------------------------------|', 0xA
+                           db '| Stock less than amount to be reduced, try again|', 0xA
+                           db '--------------------------------------------------', 0xA
+    len_insufficientStockAlert equ $ - insufficientStockAlert
+    zeroStockAlert db '----------------------------------------------------', 0xA
+                   db '|                 WARNING MESSAGE                  |', 0xA
+                   db '|--------------------------------------------------|', 0xA
+                   db '|    Zero stock left, please restock immediately   |', 0xA
+                   db '----------------------------------------------------', 0xA
+    len_zeroStockAlert equ $ - zeroStockAlert
 
-    itemNotFound db 'Item not found!', 0xA
+    itemNotFound db '----------------------------------------------------', 0xA
+                 db '|                 WARNING MESSAGE                  |', 0xA
+                 db '|--------------------------------------------------|', 0xA
+                 db '|        Item not found! Please try again.         |', 0xA
+                 db '----------------------------------------------------', 0xA
     len_itemNotFound equ $ - itemNotFound
+    invalidInputAlert db '--------------------------------------------------', 0xA
+                       db '|                 WARNING MESSAGE                |', 0xA
+                       db '|------------------------------------------------|', 0xA
+                       db '|   Only integers no alphabet input, try again   |', 0xA
+                       db '--------------------------------------------------', 0xA
+    len_invalidInputAlert equ $ - invalidInputAlert
+    ngeativeInputAlert db '--------------------------------------------------', 0xA
+                       db '|                 WARNING MESSAGE                |', 0xA
+                       db '|------------------------------------------------|', 0xA
+                       db '|  Only positive number and not zero, try again  |', 0xA
+                       db '--------------------------------------------------', 0xA
+    len_ngeativeInputAlert equ $ - ngeativeInputAlert
     stockUpdated db 'Stock updated successfully!', 0xA
     len_stockUpdated equ $ - stockUpdated
 
@@ -109,7 +137,11 @@ section .data
     itemDeleted db 'Item deleted successfully!', 0xA
     len_itemDeleted equ $ - itemDeleted
 
-    undefined db 'Undefined Choice, Please Choose again', 0xA
+    undefined db '----------------------------------------------------', 0xA
+              db '|                 WARNING MESSAGE                  |', 0xA
+              db '|--------------------------------------------------|', 0xA
+              db '|      Undefined Choice, Please Choose again       |', 0xA
+              db '----------------------------------------------------', 0xA
     len_undefined equ $ - undefined
 
 ;-------------------------------------------------------------------------------------------
@@ -232,16 +264,22 @@ condition3:
     je .done_parse_input
     cmp bl, 0                   ; Check for null
     je .done_parse_input
-    cmp bl, '0'                 ; Check if valid digit
-    jb .done_parse_input
+
+    ; Check input is integer of alphabets
+    cmp bl, '0'                 
+    jb .invalid_input
     cmp bl, '9'
-    ja .done_parse_input
+    ja .invalid_input
     
     imul eax, 10                ; eax *= 10
     sub bl, '0'                 ; Convert ASCII to number
     add eax, ebx                ; Add digit
     inc esi
     jmp .parse_input_loop
+
+.invalid_input:
+    print invalidInputAlert, len_invalidInputAlert
+    jmp print_menu
     
 .done_parse_input:
     push eax                    ; Push the NUMERIC value (not character)
@@ -754,6 +792,16 @@ editStock:
 .add_stock:
     ; Add new stock (already a number on stack)
     mov ebx, [ebp+12]         ; Get numeric value directly
+
+    ; Validate value to add is positive
+    cmp ebx, 0
+    jg .safe_to_add 
+
+    ; Negative number or zero, print error message
+    print ngeativeInputAlert, len_ngeativeInputAlert
+    jmp .cleanup
+
+.safe_to_add:
     add eax, ebx              ; Add it (no conversion needed!)
     
     ; Convert to string using tempNumBuf
@@ -763,14 +811,46 @@ editStock:
     jmp .to_string
 
 .reduce_stock:
-    ; Reduce new stock (already a number on stack)
-    mov ebx, [ebp+12]         ; Get numeric value directly
-    sub eax, ebx              ; Add it (no conversion needed!)
+    mov ebx, [ebp+12]         ; Value to reduce
     
-    ; Convert to string using tempNumBuf
+    ; if less than or equal to zero, print error
+    cmp ebx, 0
+    jle .negativeNumber 
+
+    ; Validate: current stock >= reduce amount
+    cmp eax, ebx
+    jge .safe_to_reduce       ; Jump if Greater or Equal (signed)
+    
+    ; Not enough stock
+    print insufficientStockAlert, len_insufficientStockAlert
+    jmp .cleanup
+
+.negativeNumber:
+    print ngeativeInputAlert, len_ngeativeInputAlert
+    jmp .cleanup
+    
+.safe_to_reduce:
+    sub eax, ebx
+    
+    ;check after reduce is it zero, if yes print message
+    cmp eax, 0
+    jz .zero_stock            ; Jump if zero (special message?)
+    
+    ; All good - convert to string
     mov ebx, 10
-    lea ecx, [tempNumBuf + 15]  ; point to end
-    mov byte [ecx], 0           ; null terminator
+    lea ecx, [tempNumBuf + 15]
+    mov byte [ecx], 0
+    jmp .to_string
+
+.zero_stock:
+    ;print alert message
+    push eax             ; save eax
+    print zeroStockAlert, len_zeroStockAlert
+    pop eax              ; restore eax
+
+    mov ebx, 10
+    lea ecx, [tempNumBuf + 15]
+    mov byte [ecx], 0
     jmp .to_string
 
 .to_string:
