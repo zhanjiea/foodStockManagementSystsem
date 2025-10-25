@@ -81,49 +81,59 @@ section .data
     spaces db '                                        '  ; 40 spaces for padding
 
     choice2 db  'CREATE NEW ITEM', 0xA
-            db  'Enter item name and value (apple, 10): ',
+            db  'Enter item name: ',
     len_choice2 equ $ - choice2
+    createStockValueInput db 'Enter number of stock for new item: '
+    len_createStockValueInput equ $ - createStockValueInput
+    itemExists  db '-----------------------------------------------------', 0xA
+                db '|                   ERROR MESSAGE                   |', 0xA
+                db '|---------------------------------------------------|', 0xA
+                db '| Item already exists! Please use a different name. |', 0xA
+                db '-----------------------------------------------------', 0xA
+    len_itemExists equ $ - itemExists
+    comma db ', '
+    len_comma equ $ - comma
     save db 'Item saved successfully!', 0xA
     len_save equ $ - save
 
     choice3 db  'ADD ITEM STOCK', 0xA
             db  'Enter item name: ',
     len_choice3 equ $ - choice3
-    addStockValueInput db  'Enter stock to add: ',
+    addStockValueInput db  'Enter number of stock to add: ',
     len_addStockValue equ $ - addStockValueInput
 
     choice4 db  'REDUCE ITEM STOCK', 0xA
             db  'Enter item name: ',
     len_choice4 equ $ - choice4
-    reduceStockValueInput db  'Enter stock to reduce: ',
+    reduceStockValueInput db  'Enter number of stock to reduce: ',
     len_reduceStockValue equ $ - reduceStockValueInput
     insufficientStockAlert db '--------------------------------------------------', 0xA
-                           db '|                 WARNING MESSAGE                |', 0xA
+                           db '|                 ERROR MESSAGE                  |', 0xA
                            db '|------------------------------------------------|', 0xA
                            db '| Stock less than amount to be reduced, try again|', 0xA
                            db '--------------------------------------------------', 0xA
     len_insufficientStockAlert equ $ - insufficientStockAlert
     zeroStockAlert db '----------------------------------------------------', 0xA
-                   db '|                 WARNING MESSAGE                  |', 0xA
+                   db '|                 ERROR MESSAGE                    |', 0xA
                    db '|--------------------------------------------------|', 0xA
                    db '|    Zero stock left, please restock immediately   |', 0xA
                    db '----------------------------------------------------', 0xA
     len_zeroStockAlert equ $ - zeroStockAlert
 
     itemNotFound db '----------------------------------------------------', 0xA
-                 db '|                 WARNING MESSAGE                  |', 0xA
+                 db '|                 ERROR MESSAGE                    |', 0xA
                  db '|--------------------------------------------------|', 0xA
                  db '|        Item not found! Please try again.         |', 0xA
                  db '----------------------------------------------------', 0xA
     len_itemNotFound equ $ - itemNotFound
     invalidInputAlert db '--------------------------------------------------', 0xA
-                       db '|                 WARNING MESSAGE                |', 0xA
+                       db '|                 ERROR MESSAGE                  |', 0xA
                        db '|------------------------------------------------|', 0xA
                        db '|   Only integers no alphabet input, try again   |', 0xA
                        db '--------------------------------------------------', 0xA
     len_invalidInputAlert equ $ - invalidInputAlert
     ngeativeInputAlert db '--------------------------------------------------', 0xA
-                       db '|                 WARNING MESSAGE                |', 0xA
+                       db '|                 ERROR MESSAGE                  |', 0xA
                        db '|------------------------------------------------|', 0xA
                        db '|  Only positive number and not zero, try again  |', 0xA
                        db '--------------------------------------------------', 0xA
@@ -138,7 +148,7 @@ section .data
     len_itemDeleted equ $ - itemDeleted
 
     undefined db '----------------------------------------------------', 0xA
-              db '|                 WARNING MESSAGE                  |', 0xA
+              db '|                 ERROR MESSAGE                    |', 0xA
               db '|--------------------------------------------------|', 0xA
               db '|      Undefined Choice, Please Choose again       |', 0xA
               db '----------------------------------------------------', 0xA
@@ -146,25 +156,39 @@ section .data
 
 ;-------------------------------------------------------------------------------------------
 section .bss
-menuInput resb 1
-newmItem resb 64
-readFileBuffer resb 128
+;menu input
+menuInput resb 10
+
+;condition 1
 itemNameBuf resb 64
 itemValueBuf resb 16
-lineBuffer resb 128
 itemNameLen resd 1
 itemValueLen resd 1
+
+;condition 2
+newItemName resb 64       ; Buffer for item name
+newItemValue resb 10      ; Buffer for item value
+combinedItem resb 80      ; Buffer for "name, value"
+
+;condition 3
 addStockItem resb 64
 addStockValue resb 10
+
+;condition 4
+reduceStockItem resb 64
+reduceStockValue resb 10
+
+;condition 5
+deleteItemname resb 64
+
+;file operations
 fileBuffer resb 2048        ; buffer to hold entire file
 fileBytesRead resd 1        ; total bytes read from file
 outputBuffer resb 2048      ; buffer for modified content
 outputLen resd 1            ; length of output
 itemLen resd 1
 tempNumBuf resb 16
-reduceStockItem resb 64
-reduceStockValue resb 10
-deleteItemname resb 64
+
 ;-------------------------------------------------------------------------------------------
 section .text
     global _start
@@ -174,26 +198,30 @@ print_menu:
     print menu, len_menu
 
 loop_read:
-    input menuInput, 1
+    input menuInput, 10
 
-mov al, [menuInput]
-cmp al, 0xA
-je loop_read         ; skip processing if Enter was pressed alone
+    mov al, [menuInput]
+    cmp al, 0xA
+    je loop_read         ; skip processing if Enter was pressed alone
 
-cmp al, '1'
-je condition1
-cmp al, '2'
-je condition2
-cmp al, '3'
-je condition3
-cmp al, '4'
-je condition4
-cmp al, '5'
-je condition5
-cmp al, '6'
-je exit
-; if none of the above, it's undefined
-jmp condition_undefined
+    mov bl, [menuInput + 1]    ; Second character
+    cmp bl, 0xA
+    jne condition_undefined    ; If not newline, input was too long → reject
+
+    cmp al, '1'
+    je condition1
+    cmp al, '2'
+    je condition2
+    cmp al, '3'
+    je condition3
+    cmp al, '4'
+    je condition4
+    cmp al, '5'
+    je condition5
+    cmp al, '6'
+    je exit
+    ; if none of the above, it's undefined
+    jmp condition_undefined
 
 ;-------------------------------------------------------------------------------------------
 condition1:
@@ -205,18 +233,89 @@ condition1:
 condition2:
     ; Print prompt and get new item input
     print choice2, len_choice2
-    input newmItem, 64
+    input newItemName, 64
 
+.check_newItemName:
     ; if Enter was pressed alone, ask for input again
-    mov al, [newmItem]
+    mov al, [newItemName]
     cmp al, 0xA
-    je input newmItem, 64   ; eax = bytes read
+    je .ask_newItemName_again
+    jmp .check_duplicate   
+
+.ask_newItemName_again:
+    input newItemName, 64
+    jmp .check_newItemName
+
+.check_duplicate:
+    ; Check if item already exists
+    call checkItemExists
+    cmp eax, 1              ; 1 = exists, 0 = doesn't exist
+    je .item_already_exists
+    jmp .get_newItemStock_value
+
+.item_already_exists:
+    print itemExists, len_itemExists
+    print newline, 1
+    jmp condition2          ; Go back to menu
+
+.get_newItemStock_value:
+    print createStockValueInput, len_createStockValueInput
+    input newItemValue, 10
+
+.check_newItemStock_value:
+    ; if Enter was pressed alone, ask for input again
+    mov al, [newItemValue]
+    cmp al, 0xA
+    je .ask_newItemValue_again
+    jmp .update_stock   
+
+.ask_newItemValue_again:
+    input newItemValue, 10
+    jmp .check_newItemStock_value
+
+; Pase input and check validation 
+.update_stock:
+    ; Parse the entire input string to a number
+    mov esi, newItemValue
+    xor eax, eax                ; Result accumulator
+    xor ebx, ebx                ; Temp for digit
     
-    ; Call createItem function to save new item to file
-    push eax                ; 2nd argument = input length
-    push newmItem           ; 1st argument = pointer to input
+.parse_input_loop:
+    mov bl, [esi]
+    cmp bl, 0xA                 ; Check for newline
+    je .combine_and_save
+    cmp bl, 0                   ; Check for null
+    je .combine_and_save
+
+    ; Check input is integer of alphabets
+    cmp bl, '0'                 
+    jb .invalid_input
+    cmp bl, '9'
+    ja .invalid_input
+    ;check whether input is zero
+    cmp bl, '0'
+    je .zero_input
+    
+    inc esi
+    jmp .parse_input_loop
+
+.invalid_input:
+    print invalidInputAlert, len_invalidInputAlert
+    jmp condition2
+
+.zero_input:
+    print ngeativeInputAlert, len_ngeativeInputAlert
+    jmp condition2
+
+.combine_and_save:
+    ; Combine name and value into "name, value" format
+    call combineItemData
+    
+    ; Save to file
+    push eax                ; length returned from combineItemData
+    push combinedItem       ; combined string
     call createItem
-    add esp, 8              ; clean up the stack (2 arguments * 4 bytes each)
+    add esp, 8
     print save, len_save
 
     print newline, 1
@@ -279,7 +378,7 @@ condition3:
 
 .invalid_input:
     print invalidInputAlert, len_invalidInputAlert
-    jmp print_menu
+    jmp condition3
     
 .done_parse_input:
     push eax                    ; Push the NUMERIC value (not character)
@@ -331,16 +430,21 @@ condition4:
     je .done_parse_input
     cmp bl, 0                   ; Check for null
     je .done_parse_input
-    cmp bl, '0'                 ; Check if valid digit
-    jb .done_parse_input
+    ; Check input is integer of alphabets
+    cmp bl, '0'                 
+    jb .invalid_input
     cmp bl, '9'
-    ja .done_parse_input
+    ja .invalid_input
     
     imul eax, 10                ; eax *= 10
     sub bl, '0'                 ; Convert ASCII to number
     add eax, ebx                ; Add digit
     inc esi
     jmp .parse_input_loop
+
+.invalid_input:
+    print invalidInputAlert, len_invalidInputAlert
+    jmp condition4
     
 .done_parse_input:
     push eax                    ; Push the NUMERIC value (not character)
@@ -608,6 +712,174 @@ displayItems:
     ret
 
 ;-------------------------------------------------------------------------------------------
+; ========================================
+; CHECK IF ITEM EXISTS FUNCTION
+; Returns: eax = 1 if exists, 0 if not
+; ========================================
+checkItemExists:
+    push ebp
+    mov ebp, esp
+    push ebx
+    push esi
+    push edi
+    
+    ; Calculate item name length (without newline)
+    xor ecx, ecx
+.find_len:
+    mov al, [newItemName + ecx]
+    cmp al, 0xA
+    je .found_len
+    cmp al, 0
+    je .found_len
+    inc ecx
+    jmp .find_len
+.found_len:
+    mov [itemLen], ecx      ; Store length for comparison
+    
+    ; Open and read file
+    openfile filename, 0, 0
+    cmp eax, 0
+    js .file_error          ; File doesn't exist or error = item doesn't exist
+    mov ebx, eax            ; Save file descriptor
+    
+    ; Read entire file
+    mov eax, 3
+    mov ecx, fileBuffer
+    mov edx, 2048
+    int 0x80
+    
+    mov [fileBytesRead], eax
+    
+    ; Close file
+    mov eax, 6
+    int 0x80
+    
+    cmp dword [fileBytesRead], 0
+    jle .not_found          ; Empty file = item doesn't exist
+    
+    ; Parse file line by line
+    xor esi, esi            ; Position in fileBuffer
+    
+.line_loop:
+    cmp esi, [fileBytesRead]
+    jge .not_found
+    
+    mov ebx, esi            ; Save line start
+    
+    ; Compare item name
+    xor ecx, ecx
+.compare_loop:
+    cmp ecx, [itemLen]
+    je .check_comma         ; All characters matched, check if followed by comma
+    
+    mov al, [fileBuffer + esi]
+    mov dl, [newItemName + ecx]
+    cmp al, dl
+    jne .skip_line          ; Characters don't match
+    
+    inc ecx
+    inc esi
+    jmp .compare_loop
+    
+.check_comma:
+    ; Check if next character is comma (exact match)
+    mov al, [fileBuffer + esi]
+    cmp al, ','
+    je .found_match         ; Item exists!
+    
+.skip_line:
+    ; Skip to next line
+    mov esi, ebx
+.skip_to_newline:
+    mov al, [fileBuffer + esi]
+    inc esi
+    cmp al, 0xA
+    jne .skip_to_newline
+    jmp .line_loop
+    
+.found_match:
+    ; Item exists
+    mov eax, 1
+    jmp .cleanup
+    
+.not_found:
+    ; Item doesn't exist
+    xor eax, eax            ; Return 0
+    jmp .cleanup
+    
+.file_error:
+    ; File doesn't exist = item doesn't exist
+    xor eax, eax            ; Return 0
+    
+.cleanup:
+    pop edi
+    pop esi
+    pop ebx
+    pop ebp
+    ret
+
+; Combine item name and stock value into "name, value" format
+combineItemData:
+    push ebp
+    mov ebp, esp
+    push ebx
+    push esi
+    push edi
+    
+    ; Clear combined buffer
+    mov edi, combinedItem
+    mov ecx, 80
+    xor al, al
+    rep stosb
+    
+    ; Copy item name (without newline)
+    xor esi, esi            ; source index
+    xor edi, edi            ; dest index
+
+.copy_name:
+    mov al, [newItemName + esi]
+    cmp al, 0xA             ; stop at newline
+    je .done_name
+    cmp al, 0               ; stop at null
+    je .done_name
+    
+    mov [combinedItem + edi], al
+    inc esi
+    inc edi
+    jmp .copy_name
+    
+.done_name:
+    ; Add comma and space
+    mov byte [combinedItem + edi], ','
+    inc edi
+    mov byte [combinedItem + edi], ' '
+    inc edi
+    
+    ; Copy item value (without newline)
+    xor esi, esi
+    
+.copy_value:
+    mov al, [newItemValue + esi]
+    cmp al, 0xA             ; stop at newline
+    je .done_value
+    cmp al, 0               ; stop at null
+    je .done_value
+    
+    mov [combinedItem + edi], al
+    inc esi
+    inc edi
+    jmp .copy_value
+    
+.done_value:
+    ; edi now contains total length
+    mov eax, edi            ; return length in eax
+    
+    pop edi
+    pop esi
+    pop ebx
+    pop ebp
+    ret
+
 createItem:
     push ebp        ; Save old base pointer
     mov ebp, esp    ; Create new stack frame
@@ -799,7 +1071,7 @@ editStock:
 
     ; Negative number or zero, print error message
     print ngeativeInputAlert, len_ngeativeInputAlert
-    jmp .cleanup
+    jmp .input_again
 
 .safe_to_add:
     add eax, ebx              ; Add it (no conversion needed!)
@@ -823,11 +1095,11 @@ editStock:
     
     ; Not enough stock
     print insufficientStockAlert, len_insufficientStockAlert
-    jmp .cleanup
+    jmp .input_again
 
 .negativeNumber:
     print ngeativeInputAlert, len_ngeativeInputAlert
-    jmp .cleanup
+    jmp .input_again
     
 .safe_to_reduce:
     sub eax, ebx
@@ -941,6 +1213,18 @@ editStock:
     
 .file_error:
     print errorMsg, len_errorMsg
+
+.input_again:
+    pop edi
+    pop esi
+    pop ebx
+    pop ebp
+    
+    movzx ebx, byte [menuInput]  ;  Use ebx instead of al
+    cmp bl, '3'                  ;  Compare lower byte
+    je condition3
+    cmp bl, '4'
+    je condition4
     
 .cleanup:
     pop edi
