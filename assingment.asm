@@ -230,11 +230,15 @@ condition1:
     print newline, 1
     jmp print_menu
 
+;---------------------------------------------------------
 condition2:
     ; Print prompt and get new item input
     print choice2, len_choice2
     input newItemName, 64
 
+;==========================================
+; New item name input
+;========================================== 
 .check_newItemName:
     ; if Enter was pressed alone, ask for input again
     mov al, [newItemName]
@@ -248,7 +252,7 @@ condition2:
 
 .check_duplicate:
     ; Check if item already exists
-    call checkItemExists
+    call checkItemExists    ; will return eax value
     cmp eax, 1              ; 1 = exists, 0 = doesn't exist
     je .item_already_exists
     jmp .get_newItemStock_value
@@ -258,6 +262,9 @@ condition2:
     print newline, 1
     jmp condition2          ; Go back to menu
 
+;==========================================
+; New item's stock input
+;========================================== 
 .get_newItemStock_value:
     print createStockValueInput, len_createStockValueInput
     input newItemValue, 10
@@ -273,7 +280,9 @@ condition2:
     input newItemValue, 10
     jmp .check_newItemStock_value
 
-; Pase input and check validation 
+;==========================================
+; Pase stock into number and check validation
+;========================================== 
 .update_stock:
     ; Parse the entire input string to a number
     mov esi, newItemValue
@@ -307,6 +316,9 @@ condition2:
     print ngeativeInputAlert, len_ngeativeInputAlert
     jmp condition2
 
+;==========================================
+; Make int0 "name, value" format and save into file 
+;========================================== 
 .combine_and_save:
     ; Combine name and value into "name, value" format
     call combineItemData
@@ -321,11 +333,15 @@ condition2:
     print newline, 1
     jmp print_menu
 
+;---------------------------------------------------------
 condition3:
     ; Get item name
     print choice3, len_choice3
     input addStockItem, 64
 
+;==========================================
+; Add item name input
+;========================================== 
 .check_item_name:
     mov al, [addStockItem]
     cmp al, 0xA
@@ -336,6 +352,9 @@ condition3:
     input addStockItem, 64
     jmp .check_item_name
 
+;==========================================
+; Add item stock input
+;========================================== 
 .get_stock_value:
     ; Get stock value to add
     print addStockValueInput, len_addStockValue
@@ -351,6 +370,9 @@ condition3:
     input addStockValue, 10
     jmp .check_stock_value
 
+;==========================================
+; Parse item stock into integer and validations
+;========================================== 
 .update_stock:
     ; Parse the entire input string to a number
     mov esi, addStockValue
@@ -370,16 +392,19 @@ condition3:
     cmp bl, '9'
     ja .invalid_input
     
-    imul eax, 10                ; eax *= 10
-    sub bl, '0'                 ; Convert ASCII to number
-    add eax, ebx                ; Add digit
+    imul eax, 10                ; first loop 0*10 = 0, second loop 1*10 = 10
+    sub bl, '0'                 ; Convert ASCII to number, EX: eax(0x31) - 0x30 = 1
+    add eax, ebx                ; Add digit, eax(1) + 0 = 1, eax(10) + 2 = 12
     inc esi
     jmp .parse_input_loop
 
 .invalid_input:
     print invalidInputAlert, len_invalidInputAlert
     jmp condition3
-    
+
+;==========================================
+; Call add stock functions
+;==========================================     
 .done_parse_input:
     push eax                    ; Push the NUMERIC value (not character)
     push addStockItem           
@@ -389,10 +414,14 @@ condition3:
     print newline, 1
     jmp print_menu
 
+;---------------------------------------------------------
 condition4:
     print choice4, len_choice4
     input reduceStockItem, 64
 
+;==========================================
+; Reduce item name input
+;==========================================   
 .check_item_name:
     mov al, [reduceStockItem]
     cmp al, 0xA
@@ -403,6 +432,9 @@ condition4:
     input reduceStockItem, 64
     jmp .check_item_name
 
+;==========================================
+; Reduce item stock input
+;==========================================   
 .get_stock_value:
     ; Get stock value to add
     print reduceStockValueInput, len_reduceStockValue
@@ -418,6 +450,9 @@ condition4:
     input reduceStockValue, 10
     jmp .check_stock_value
 
+;==========================================
+; Parse stock into integer and validations
+;==========================================   
 .update_stock:
     ; Parse the entire input string to a number
     mov esi, reduceStockValue
@@ -445,7 +480,10 @@ condition4:
 .invalid_input:
     print invalidInputAlert, len_invalidInputAlert
     jmp condition4
-    
+
+;==========================================
+; Call reduce stock functions
+;==========================================   
 .done_parse_input:
     push eax                    ; Push the NUMERIC value (not character)
     push reduceStockItem           
@@ -455,10 +493,14 @@ condition4:
     print newline, 1
     jmp print_menu
 
+;---------------------------------------------------------
 condition5:
     print choice5, len_choice5
     input deleteItemname, 64
 
+;==========================================
+; delete item name input
+;==========================================   
 .check_item_name:
     mov al, [deleteItemname]
     cmp al, 0xA
@@ -469,6 +511,9 @@ condition5:
     input deleteItemname, 64
     jmp .check_item_name
 
+;==========================================
+; Call delete item functions
+;==========================================   
 .do_delete:
     ; Call deleteItem
     xor eax, eax               ; No numeric value needed
@@ -480,17 +525,22 @@ condition5:
     print newline, 1
     jmp print_menu
 
+;---------------------------------------------------------
 condition_undefined:
     print undefined, len_undefined
     print newline, 1
     jmp print_menu
 
+;---------------------------------------------------------
 exit:
     mov eax, 1          ; syscall: exit
     mov ebx, 0          ; status: 0
     int 0x80            ; call kernel
 
 ;-------------------------------------------------------------------------------------------
+; ========================================
+; CONDITION 1 
+; ========================================
 displayItems:
     push ebp
     mov ebp, esp
@@ -503,7 +553,9 @@ displayItems:
     print tableHeader, len_tableHeader
     print tableDivider, len_tableDivider
     
-    ; Open file
+;==========================================
+; Open file
+;==========================================   
     openfile filename, 0, 0
     cmp eax, 0
     js .file_error
@@ -525,7 +577,10 @@ displayItems:
     
     ; Parse and display each line
     xor esi, esi                ; position in fileBuffer
-    
+
+;==========================================
+; Loop each line the fileBytesRead
+;========================================== 
 .line_loop:
     cmp esi, [fileBytesRead]
     jge .done_display
@@ -545,6 +600,9 @@ displayItems:
     print tableBottom, len_tableBottom
     jmp .cleanup
     
+;==========================================
+; File error and item error
+;========================================== 
 .file_error:
     print errorMsg, len_errorMsg
     jmp .cleanup
@@ -713,6 +771,8 @@ displayItems:
 
 ;-------------------------------------------------------------------------------------------
 ; ========================================
+; CONDITION 2 
+; ========================================
 ; CHECK IF ITEM EXISTS FUNCTION
 ; Returns: eax = 1 if exists, 0 if not
 ; ========================================
@@ -723,7 +783,9 @@ checkItemExists:
     push esi
     push edi
     
-    ; Calculate item name length (without newline)
+; ========================================
+; Calculate item name length (without newline)
+; ========================================
     xor ecx, ecx
 .find_len:
     mov al, [newItemName + ecx]
@@ -733,6 +795,10 @@ checkItemExists:
     je .found_len
     inc ecx
     jmp .find_len
+
+; ========================================
+; Open file and save into file desciptor, fileBuffer and file size (fileBytesRead)
+; ========================================
 .found_len:
     mov [itemLen], ecx      ; Store length for comparison
     
@@ -759,15 +825,20 @@ checkItemExists:
     
     ; Parse file line by line
     xor esi, esi            ; Position in fileBuffer
-    
+
+; ========================================
+; Loop line by line, if (esi) greater or equal to file size == reach eand of file == cannot find the item
+; ========================================
 .line_loop:
     cmp esi, [fileBytesRead]
-    jge .not_found
+    jge .not_found          
     
     mov ebx, esi            ; Save line start
     
     ; Compare item name
     xor ecx, ecx
+
+; if ecx length == itemLen, check next is comma
 .compare_loop:
     cmp ecx, [itemLen]
     je .check_comma         ; All characters matched, check if followed by comma
@@ -786,17 +857,24 @@ checkItemExists:
     mov al, [fileBuffer + esi]
     cmp al, ','
     je .found_match         ; Item exists!
-    
+
+; ========================================
+; Move to new line through esi (store the line start)
+; ========================================     
 .skip_line:
     ; Skip to next line
     mov esi, ebx
+
 .skip_to_newline:
     mov al, [fileBuffer + esi]
     inc esi
-    cmp al, 0xA
+    cmp al, 0xA                     
     jne .skip_to_newline
-    jmp .line_loop
-    
+    jmp .line_loop              ;loop to next line when esi == 0xA
+
+; ========================================
+; Conditions: found/not found item, file error
+; ========================================   
 .found_match:
     ; Item exists
     mov eax, 1
@@ -818,7 +896,9 @@ checkItemExists:
     pop ebp
     ret
 
+; ========================================
 ; Combine item name and stock value into "name, value" format
+; ========================================
 combineItemData:
     push ebp
     mov ebp, esp
@@ -835,7 +915,7 @@ combineItemData:
     ; Copy item name (without newline)
     xor esi, esi            ; source index
     xor edi, edi            ; dest index
-
+  
 .copy_name:
     mov al, [newItemName + esi]
     cmp al, 0xA             ; stop at newline
@@ -880,22 +960,25 @@ combineItemData:
     pop ebp
     ret
 
+; ========================================
+; save the item into file
+; ========================================
 createItem:
-    push ebp        ; Save old base pointer
-    mov ebp, esp    ; Create new stack frame
+    push ebp                    ; Save old base pointer
+    mov ebp, esp                ; Create new stack frame
     
-    mov ecx, [ebp+8]     ; ptr to input buffer
-    mov edx, [ebp+12]    ; length of input
+    mov ecx, [ebp+8]            ; length returned from combineItemData
+    mov edx, [ebp+12]           ; combined string
 
     ; ===== Remove trailing newline if present =====
-    mov esi, [ebp+8]     ; pointer to buffer
-    mov ecx, [ebp+12]    ; input length
-    dec ecx               ; point to last byte
+    mov esi, [ebp+8]            ; pointer to buffer
+    mov ecx, [ebp+12]           ; input length
+    dec ecx                     ; point to last byte
     mov al, [esi + ecx]
-    cmp al, 10            ; is it newline ('\n')?
+    cmp al, 10                  ; is it newline ('\n')?
     jne .no_trim
-    mov byte [esi + ecx], 0   ; replace with NULL
-    dec dword [ebp+12]        ; reduce input length
+    mov byte [esi + ecx], 0     ; replace with NULL
+    dec dword [ebp+12]          ; reduce input length
 
 .no_trim:
     ; ===== Open file for appending =====
@@ -925,6 +1008,9 @@ createItem:
     ret
 
 ;-------------------------------------------------------------------------------------------
+; ========================================
+; CONDITION 3, 4 and 5 
+; ========================================
 editStock:
     push ebp
     mov ebp, esp
@@ -933,16 +1019,25 @@ editStock:
     push edi
     
     ; Calculate item name length (without newline)
-    mov esi, [ebp+8]
+    mov esi, [ebp+8]            ; ebp+8 == addStockItem/reduceStockItem variable
     xor ecx, ecx
+
+; ========================================
+; Check if item exits or not
+; Calculate item name length (without newline)
+; ========================================
 .find_len:
     mov al, [esi + ecx]
-    cmp al, 0xA
-    je .found_len
+    cmp al, 0xA                 ; If newline == get the length of addStockItem/reduceStockItem, jump to found_len
+    je .found_len           
     cmp al, 0
     je .found_len
     inc ecx
     jmp .find_len
+
+; ========================================
+; Open file and save into file desciptor, fileBuffer and file size (fileBytesRead)
+; ========================================
 .found_len:
     mov [itemLen], ecx
     
@@ -953,11 +1048,11 @@ editStock:
     mov ebx, eax
     
     mov eax, 3
-    mov ecx, fileBuffer
+    mov ecx, fileBuffer         ;fileBuffer store the data
     mov edx, 2048
     int 0x80
     
-    mov [fileBytesRead], eax
+    mov [fileBytesRead], eax    ;fileBytesRead store the file size
     
     mov eax, 6
     int 0x80
@@ -968,7 +1063,10 @@ editStock:
     ; Parse file
     xor esi, esi                ; input pos
     xor edi, edi                ; output pos
-    
+
+; ========================================
+; Loop line by line, if (esi) greater or equal to file size == reach eand of file == cannot find the item
+; ========================================    
 .line_loop:
     cmp esi, [fileBytesRead]
     jge .item_not_found
@@ -978,9 +1076,11 @@ editStock:
     ; Compare item name
     mov edx, [ebp+8]
     xor ecx, ecx
+
+ ; if ecx length == itemLen, check next is comma   
 .cmp_loop:
     cmp ecx, [itemLen]
-    je .check_comma
+    je .check_comma                 ; All characters matched, check if followed by comma
     
     mov al, [fileBuffer + esi]
     cmp al, [edx + ecx]
@@ -991,12 +1091,17 @@ editStock:
     jmp .cmp_loop
     
 .check_comma:
+; Check if next character is comma (exact match)
     mov al, [fileBuffer + esi]
     cmp al, ','
     je .found_match
-    
+
+; ========================================
+; Move to new line through esi (store the line start)
+; ========================================       
 .no_match:
     mov esi, ebx
+    
 .copy_line:
     mov al, [fileBuffer + esi]
     mov [outputBuffer + edi], al
@@ -1004,18 +1109,24 @@ editStock:
     inc edi
     cmp al, 0xA
     jne .copy_line
-    jmp .line_loop
-    
+    jmp .line_loop              ;loop to next line when esi == 0xA
+
+; ========================================
+; If founmd item, check menuInput, if == 5, jmp to deleteItem
+; ========================================           
 .found_match:
     ;compare to see whether it is delete
-    movzx edx, byte [menuInput]  ;  Use ebx instead of al
-    cmp dl, '5'                  ;  Compare lower byte
+    movzx edx, byte [menuInput]     ;  Use edx instead of al
+    cmp dl, '5'                     ;  Compare lower byte
     je .delete_item
 
     ; Copy name and comma
-    mov esi, ebx
+    mov esi, ebx                    ; ebx == line start
     mov ecx, [itemLen]
 
+; ========================================
+; Copy the name from fileBuffer
+; ========================================   
 .copy_name:
     mov al, [fileBuffer + esi]
     mov [outputBuffer + edi], al
@@ -1030,12 +1141,15 @@ editStock:
     inc edi
     
     mov al, [fileBuffer + esi]
-    cmp al, ' '
+    cmp al, ' '                     ;untill it reaches space
     jne .parse_num
     mov [outputBuffer + edi], al
     inc esi
     inc edi
-    
+
+; ========================================
+; Parse to integer and do validation 
+; ========================================     
 .parse_num:
     ; Parse number
     xor eax, eax
@@ -1052,7 +1166,10 @@ editStock:
     add eax, ebx
     inc esi
     jmp .parse_loop
-    
+
+; ========================================
+; After parse, check add or sub
+; ========================================        
 .done_parse:
     movzx ebx, byte [menuInput]  ;  Use ebx instead of al
     cmp bl, '3'                  ;  Compare lower byte
@@ -1061,6 +1178,9 @@ editStock:
     je .reduce_stock
     jmp .cleanup
 
+; ========================================
+; Condition 3: Add stock
+; ========================================   
 .add_stock:
     ; Add new stock (already a number on stack)
     mov ebx, [ebp+12]         ; Get numeric value directly
@@ -1082,6 +1202,9 @@ editStock:
     mov byte [ecx], 0           ; null terminator
     jmp .to_string
 
+; ========================================
+; Condition 4: Reduce stock
+; ======================================== 
 .reduce_stock:
     mov ebx, [ebp+12]         ; Value to reduce
     
@@ -1125,6 +1248,9 @@ editStock:
     mov byte [ecx], 0
     jmp .to_string
 
+; ========================================
+; Parse the integer back to string
+; ======================================== 
 .to_string:
     dec ecx
     xor edx, edx
@@ -1157,6 +1283,9 @@ editStock:
     jne .copy_eol
     jmp .copy_remaining
 
+; ========================================
+; Condition 5: Delete -> do not need to copy the name and value, skip current line
+; ======================================== 
 .delete_item:
     ; Skip rest of current line
     mov esi, ebx  
@@ -1170,7 +1299,10 @@ editStock:
     jne .skip_line
     ; Line skipped, continue with next line
     jmp .copy_remaining
-    
+
+; ========================================
+; Copy remaining data into fileBytesRead
+; ========================================     
 .copy_remaining:
     ; Copy remaining lines
     cmp esi, [fileBytesRead]
@@ -1180,7 +1312,10 @@ editStock:
     inc esi
     inc edi
     jmp .copy_remaining
-    
+
+; ========================================
+; Open file and edit
+; ========================================      
 .write_file:
     ; Write back to file
     openfile filename, 0x241, 0o644
@@ -1196,13 +1331,18 @@ editStock:
     mov eax, 6
     int 0x80
     
-    ; Check what operation was done for appropriate message
+; ========================================
+; Check what operation was done for appropriate message, 5-> delete message, else show stock updated
+; ========================================   
     movzx eax, byte [menuInput]
     cmp al, '5'
     je .show_deleted
     print stockUpdated, len_stockUpdated
     jmp .cleanup
 
+; ========================================
+; Conditions: delete message, found/not found item, file error
+; ======================================== 
 .show_deleted:
     print itemDeleted, len_itemDeleted
     jmp .cleanup
@@ -1214,6 +1354,9 @@ editStock:
 .file_error:
     print errorMsg, len_errorMsg
 
+; ========================================
+; Input validation to input again for condition 3 and 4
+; ======================================== 
 .input_again:
     pop edi
     pop esi
