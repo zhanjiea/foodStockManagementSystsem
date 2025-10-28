@@ -1385,6 +1385,7 @@ editStock:
     je condition3
     cmp bl, '4'
     je condition4
+    jmp condition5
     
 .cleanup:
     pop edi
