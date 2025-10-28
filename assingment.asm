@@ -288,25 +288,42 @@ condition2:
     mov esi, newItemValue
     xor eax, eax                ; Result accumulator
     xor ebx, ebx                ; Temp for digit
+    xor ecx, ecx                ; Digit count (to detect if any digits found)
     
 .parse_input_loop:
     mov bl, [esi]
     cmp bl, 0xA                 ; Check for newline
-    je .combine_and_save
+    je .done_parsing
     cmp bl, 0                   ; Check for null
-    je .combine_and_save
+    je .done_parsing
 
     ; Check input is integer of alphabets
     cmp bl, '0'                 
     jb .invalid_input
     cmp bl, '9'
     ja .invalid_input
-    ;check whether input is zero
-    cmp bl, '0'
-    je .zero_input
+
+    ; Valid digit - add to result
+    imul eax, 10                ; eax *= 10
+    sub bl, '0'                 ; Convert ASCII to number
+    movzx edx, bl
+    add eax, edx                ; Add digit to result
     
+    inc ecx                     ; Count this digit
     inc esi
     jmp .parse_input_loop
+
+.done_parsing:
+    ; Now check if we got any digits
+    test ecx, ecx
+    jz .invalid_input           ; No digits entered
+    
+    ; Check if the FINAL NUMBER is zero or negative
+    cmp eax, 0              ; Is eax == 0?
+    jbe .zero_input              ; Yes, reject it
+    
+    ; Valid number > 0, continue
+    jmp .combine_and_save
 
 .invalid_input:
     print invalidInputAlert, len_invalidInputAlert
@@ -1349,7 +1366,7 @@ editStock:
     
 .item_not_found:
     print itemNotFound, len_itemNotFound
-    jmp .cleanup
+    jmp .input_again
     
 .file_error:
     print errorMsg, len_errorMsg
